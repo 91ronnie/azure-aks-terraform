@@ -1,0 +1,27 @@
+# FrontRow - dev environment values.
+#
+# The image block is updated automatically by the web pipeline
+# (web/azure-pipelines.yml, stage "GitOps") with the exact image it built,
+# scanned and pushed. Edit other fields by pull request.
+image:
+  repository: "" # e.g. acrfrontrowdev<suffix>.azurecr.io/frontrow/web
+  tag: "" # git-<12-char commit sha>
+  digest: "" # sha256:...
+ingress:
+  host: azure-fr.frontrow.co.ke
+  tls:
+    # Switch to letsencrypt-prod after the staging certificate is issued.
+    clusterIssuer: letsencrypt-staging
+replicaCount: 2
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+keyVault:
+  enabled: false
+  # name: kv-frontrow-dev-<suffix>        # terraform output key_vault_name
+  # tenantId: <terraform output tenant_id>
+  # objects:
+  #   - name: frontrow-demo-secret
+# serviceAccount:
+#   workloadIdentityClientId: <terraform output workload_identity_client_id>

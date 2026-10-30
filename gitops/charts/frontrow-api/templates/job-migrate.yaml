@@ -1,0 +1,39 @@
+{{- if .Values.migrations.enabled }}
+# Database migrations, once per Argo CD sync, BEFORE the new pods roll:
+# Sync hook in wave 0 (SecretProviderClass/ConfigMap are wave -1, workloads 1).
+# A failed migration fails the sync, so the old version keeps serving.
+# `migrate --force` is idempotent; nothing runs when there is nothing new.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "frontrow-api.fullname" . }}-migrate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "frontrow-api.labels" (dict "root" . "component" "migrate") | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "frontrow-api.selectorLabels" (dict "root" . "component" "migrate") | nindent 8 }}
+        azure.workload.identity/use: "true"
+    spec:
+      {{- include "frontrow-api.podCommon" . | nindent 6 }}
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          {{- include "frontrow-api.phpContainer" . | nindent 10 }}
+          command: ["frontrow-entrypoint"]
+          args:
+            {{- toYaml .Values.migrations.command | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+      volumes:
+        {{- include "frontrow-api.phpVolumes" . | nindent 8 }}
+{{- end }}

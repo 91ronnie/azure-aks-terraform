@@ -1,0 +1,42 @@
+# Accepted Trivy findings (path-scoped). Every entry states why it is accepted
+# and when to revisit it. Remove entries when the reason no longer holds.
+# See docs/security.md#accepted-risks.
+misconfigurations:
+  - id: AZU-0047
+    paths:
+      - modules/networking/main.tf
+    statement: >-
+      The node-subnet NSG allows TCP 80/443 from var.ingress_allowed_source_prefixes
+      (default "Internet") because FrontRow is a public website. Only the ingress
+      controller listens on these ports. Narrow to Cloudflare's ranges once proxying
+      is enabled (docs/cloudflare-dns-tls.md). Review: 2027-01-31.
+  - id: AZU-0065
+    paths:
+      - modules/aks/main.tf
+    statement: >-
+      Lab uses a public API server restricted by authorized_ip_ranges, Entra ID auth
+      and local accounts disabled. A private cluster needs private DNS plus VPN/Bastion
+      or self-hosted agents (ADR-002). Review before any production use.
+  - id: AZU-0021
+    paths:
+      - modules/postgres/main.tf
+    statement: >-
+      connection_throttle.enable is a Single Server parameter; its availability on
+      Flexible Server was not confirmed. The server is reachable only from the AKS
+      node subnet (NSG) and accepts Entra ID tokens only. Review: 2027-01-31.
+  - id: AZU-0026
+    paths:
+      - modules/postgres/main.tf
+    statement: >-
+      The check looks for the Single Server attribute ssl_minimal_tls_version_enforced.
+      On Flexible Server TLS is enforced by the require_secure_transport=on and
+      ssl_min_protocol_version=TLSv1.2 server parameters set in this module.
+  - id: AZU-0012
+    paths:
+      - environments/dev/api.tf
+    statement: >-
+      The FrontRow API storage account must accept requests from the Internet:
+      browsers open the SAS links the app issues (temporaryUrl). Containers are
+      private, anonymous access is off, TLS 1.2 is required and SAS validity is
+      limited by sas_policy. Revisit if downloads move behind the API or a CDN
+      (docs/frontrow-api.md#why-a-storage-key). Review: 2027-01-31.

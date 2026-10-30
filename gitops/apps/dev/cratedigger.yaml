@@ -1,0 +1,37 @@
+# CrateDigger. Chart: gitops/charts/cratedigger; values:
+# gitops/environments/dev/cratedigger/values.yaml (image block written by the
+# crate-digger pipeline).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cratedigger-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: cratedigger
+  source:
+    repoURL: https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+    targetRevision: main
+    path: gitops/charts/cratedigger
+    helm:
+      releaseName: cratedigger
+      valueFiles:
+        - ../../environments/dev/cratedigger/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cratedigger
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+    syncOptions:
+      - CreateNamespace=true
+  revisionHistoryLimit: 10

@@ -1,0 +1,15 @@
+# Values used by `helm lint` / `helm template` in CI and local validation only.
+ingress:
+  host: frontrow.example.test
+image:
+  repository: acrfrontrowdevexample.azurecr.io/frontrow/web
+  tag: git-0123456789ab
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+keyVault:
+  enabled: true
+  name: kv-frontrow-dev-example
+  tenantId: 00000000-0000-0000-0000-000000000000
+  objects:
+    - name: frontrow-demo-secret
+serviceAccount:
+  workloadIdentityClientId: 00000000-0000-0000-0000-000000000000

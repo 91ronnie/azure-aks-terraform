@@ -1,0 +1,5 @@
+CrateDigger {{ .Values.image.tag }} -> https://{{ .Values.ingress.host }}
+
+  kubectl -n {{ .Release.Namespace }} get deploy,pods,svc,ingress,certificate
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "cratedigger.fullname" . }} -c db-init
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "cratedigger.fullname" . }} -c app -f

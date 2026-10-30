@@ -1,0 +1,37 @@
+# Checkov configuration. Every skipped check has a documented reason
+# (docs/security.md#accepted-risks). Re-evaluate before production use.
+directory:
+  - .
+framework:
+  - terraform
+  - kubernetes
+  - helm
+  - secrets
+  - dockerfile
+compact: true
+quiet: true
+skip-path:
+  - environments/dev/.terraform
+  - environments/dev/tests
+skip-check:
+  # --- ACR Premium-only features (Basic SKU chosen for cost, ~10x cheaper) ---
+  - CKV_AZURE_139   # disable public network access: needs Premium + private endpoint
+  - CKV_AZURE_164   # content trust / signed images: Premium. Mitigation: digest pinning in GitOps
+  - CKV_AZURE_165   # geo-replication: single-region lab
+  - CKV_AZURE_166   # quarantine policy: Premium
+  - CKV_AZURE_167   # retention policy for untagged manifests: Premium. Mitigation: optional acr purge task
+  - CKV_AZURE_233   # zone redundancy: Premium
+  - CKV_AZURE_237   # dedicated data endpoints: Premium
+  # --- Paid security products ---
+  - CKV_AZURE_163   # Defender for Containers image scanning. Mitigation: Trivy gate in the pipeline
+  # --- Lab architecture trade-offs (ADR-002, ADR-004) ---
+  - CKV_AZURE_115   # private cluster: public API restricted by authorized IP ranges + Entra ID
+  - CKV_AZURE_117   # customer-managed disk encryption set: platform-managed keys + encryption at host
+  - CKV_AZURE_232   # dedicated system pool: single small pool to save cost
+  - CKV2_AZURE_32   # Key Vault private endpoint: service endpoint + firewall instead
+  # --- PostgreSQL Flexible Server (CrateDigger) ---
+  - CKV_AZURE_136   # geo-redundant backups: single-region lab; 7-day local backups only
+  - CKV2_AZURE_57   # "private endpoint": server uses VNet integration (no public endpoint at all)
+  # --- MySQL Flexible Server (FrontRow API) ---
+  - CKV_AZURE_94    # geo-redundant backups: single-region lab; 7-day local backups only
+  - CKV2_AZURE_56   # "private endpoint": server uses VNet integration (no public endpoint at all)

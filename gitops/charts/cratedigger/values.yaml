@@ -1,0 +1,99 @@
+# Defaults for the CrateDigger chart. Environment values live in
+# gitops/environments/<env>/cratedigger/values.yaml.
+
+image:
+  repository: ""   # <acr>/cratedigger/app - written by the pipeline
+  tag: ""          # git-<sha12>, never "latest"
+  digest: ""       # sha256:... - written by the pipeline
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  name: cratedigger
+  # terraform output -json cratedigger | jq -r .workload_identity_client_id
+  workloadIdentityClientId: ""
+
+containerPort: 8888
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ""
+  tls:
+    clusterIssuer: letsencrypt-staging
+    secretName: cratedigger-tls
+  annotations: {}
+
+# Non-secret runtime configuration (becomes environment variables).
+config:
+  ENVIRONMENT: production
+  LOG_FORMAT: json
+  LOG_LEVEL: INFO
+  DATABASE_ENTRA_AUTH: "true"
+  EXPORT_DIR: /app/spotify_exports
+  SYNC_MATCH_YOUTUBE: "true"
+
+database:
+  # postgresql+psycopg://<identity-name>@<server>.postgres.database.azure.com:5432/cratedigger?sslmode=require
+  # (terraform output -json cratedigger | jq -r .database_url). Contains no
+  # password: the pod authenticates with its Entra ID token.
+  url: ""
+
+# Secrets: read from Azure Key Vault by the Secrets Store CSI driver with the
+# pod's workload identity, synced into a Kubernetes Secret and exposed as
+# environment variables. Map: Key Vault secret name -> environment variable.
+keyVault:
+  name: ""       # terraform output -json cratedigger | jq -r .key_vault_name
+  tenantId: ""
+  secrets:
+    SECRET_KEY: secret-key  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    ADMIN_USERNAME: admin-username  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    ADMIN_PASSWORD: admin-password  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    ADMIN_EMAIL: admin-email  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    SPOTIFY_CLIENT_ID: spotify-client-id  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    SPOTIFY_CLIENT_SECRET: spotify-client-secret  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    YOUTUBE_API_KEY: youtube-api-key  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 192Mi
+  limits:
+    memory: 512Mi
+
+initResources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 384Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop: ["ALL"]
+
+networkPolicy:
+  enabled: true
+  ingressNamespace: traefik
+  # Destination of PostgreSQL traffic (the delegated subnet).
+  postgresCidr: 10.40.12.0/28
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

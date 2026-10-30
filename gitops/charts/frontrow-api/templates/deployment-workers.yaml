@@ -1,0 +1,42 @@
+{{- range $name, $worker := .Values.workers }}
+---
+# Queue worker "{{ $name }}" (was a supervisor program on EC2). --max-time
+# makes the worker exit hourly; Kubernetes restarts it with fresh memory.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "%s-worker-%s" (include "frontrow-api.fullname" $) $name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "frontrow-api.labels" (dict "root" $ "component" (printf "worker-%s" $name)) | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: {{ $worker.replicas }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "frontrow-api.selectorLabels" (dict "root" $ "component" (printf "worker-%s" $name)) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "frontrow-api.selectorLabels" (dict "root" $ "component" (printf "worker-%s" $name)) | nindent 8 }}
+        azure.workload.identity/use: "true"
+      annotations:
+        {{- include "frontrow-api.podAnnotations" $ | nindent 8 }}
+    spec:
+      {{- include "frontrow-api.podCommon" $ | nindent 6 }}
+      # A job that is running when the pod stops gets this long to finish
+      # (queue:work handles SIGTERM after the current job).
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          {{- include "frontrow-api.phpContainer" $ | nindent 10 }}
+          command: ["frontrow-entrypoint"]
+          args:
+            {{- toYaml $worker.command | nindent 12 }}
+          resources:
+            {{- toYaml $worker.resources | nindent 12 }}
+      volumes:
+        {{- include "frontrow-api.phpVolumes" $ | nindent 8 }}
+{{- end }}

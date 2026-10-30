@@ -1,0 +1,97 @@
+# The HTTP API: nginx (public/ + FastCGI) and php-fpm in one pod, talking over
+# 127.0.0.1:9000. Rolls after the migration job (sync wave 1).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "frontrow-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "frontrow-api.labels" (dict "root" . "component" "api") | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "frontrow-api.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "frontrow-api.selectorLabels" (dict "root" . "component" "api") | nindent 8 }}
+        azure.workload.identity/use: "true"
+      annotations:
+        {{- include "frontrow-api.podAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "frontrow-api.podCommon" . | nindent 6 }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: php
+          {{- include "frontrow-api.phpContainer" . | nindent 10 }}
+          ports:
+            - name: fastcgi
+              containerPort: 9000
+              protocol: TCP
+          startupProbe:
+            tcpSocket:
+              port: fastcgi
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            tcpSocket:
+              port: fastcgi
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Let the endpoint removal propagate before php-fpm stops.
+              sleep:
+                seconds: 10
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+        - name: nginx
+          image: {{ include "frontrow-api.webImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # Ready = PHP answers AND the database and Redis are reachable.
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            runAsUser: {{ .Values.nginxUser }}
+            runAsGroup: {{ .Values.nginxUser }}
+          volumeMounts:
+            - name: nginx-tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.api.webResources | nindent 12 }}
+      volumes:
+        {{- include "frontrow-api.phpVolumes" . | nindent 8 }}
+        - name: nginx-tmp
+          emptyDir:
+            sizeLimit: 256Mi

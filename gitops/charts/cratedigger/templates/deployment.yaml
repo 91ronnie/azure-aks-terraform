@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cratedigger.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cratedigger.labels" . | nindent 4 }}
+spec:
+  # Exactly one replica: syncs run as in-process background tasks, and two
+  # pods could run the same sync concurrently.
+  replicas: 1
+  revisionHistoryLimit: 5
+  # Recreate (not RollingUpdate) so an old and a new pod never overlap during
+  # a release. A few seconds of downtime per deploy is the trade-off.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cratedigger.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cratedigger.selectorLabels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
+      annotations:
+        # Roll the pod when non-secret configuration changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      # The app needs no Kubernetes API access; workload identity uses its own
+      # projected token, injected by the webhook.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # Creates the database on first start, then create_all + stamp or
+        # alembic upgrade head. Idempotent.
+        - name: db-init
+          {{- include "cratedigger.containerCommon" . | nindent 10 }}
+          command: ["python", "-m", "app.scripts.db_init"]
+          resources:
+            {{- toYaml .Values.initResources | nindent 12 }}
+      containers:
+        - name: app
+          {{- include "cratedigger.containerCommon" . | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+        # Token cache and CLI export directory. Not persistent on purpose: the
+        # web app keeps OAuth tokens in PostgreSQL.
+        - name: data
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: exports
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: keyvault
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "cratedigger.fullname" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

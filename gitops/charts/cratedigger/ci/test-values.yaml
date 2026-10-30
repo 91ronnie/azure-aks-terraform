@@ -1,0 +1,14 @@
+# Values used by `helm lint` / `helm template` in CI and local validation only.
+image:
+  repository: acrfrontrowdevexample.azurecr.io/cratedigger/app
+  tag: git-0123456789ab
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+ingress:
+  host: cratedigger.example.test
+serviceAccount:
+  workloadIdentityClientId: 00000000-0000-0000-0000-000000000000
+keyVault:
+  name: kv-cd-dev-example
+  tenantId: 00000000-0000-0000-0000-000000000000
+database:
+  url: postgresql+psycopg://id-frontrow-dev-cratedigger@psql-frontrow-dev-example.postgres.database.azure.com:5432/cratedigger?sslmode=require

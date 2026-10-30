@@ -1,0 +1,22 @@
+# App-of-apps: Argo CD watches gitops/apps/dev and creates every Application
+# defined there. Adding a file to that directory adds an application.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+    targetRevision: main
+    path: gitops/apps/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

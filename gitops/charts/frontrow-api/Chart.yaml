@@ -1,0 +1,7 @@
+apiVersion: v2
+name: frontrow-api
+description: FrontRow API - Laravel backend (nginx + php-fpm, queue workers, scheduler) with Azure MySQL, Managed Redis, Blob storage and Key Vault secrets
+type: application
+version: 0.1.0
+appVersion: "6.3.7"
+kubeVersion: ">=1.30.0-0"

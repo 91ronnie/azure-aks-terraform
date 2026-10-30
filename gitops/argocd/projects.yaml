@@ -1,0 +1,89 @@
+# Argo CD projects limit what each group of Applications may deploy and where.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  description: Cluster add-ons (ingress, certificates) managed by the platform operator.
+  sourceRepos:
+    - https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+    - https://traefik.github.io/charts
+    - https://charts.jetstack.io
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: traefik
+    - server: https://kubernetes.default.svc
+      namespace: cert-manager
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+    - server: https://kubernetes.default.svc
+      namespace: kube-system   # cert-manager leader-election role
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: frontrow
+  namespace: argocd
+spec:
+  description: The FrontRow web application. Namespaced resources only.
+  sourceRepos:
+    - https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: frontrow
+  # Only the namespace itself may be created at cluster scope.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: cratedigger
+  namespace: argocd
+spec:
+  description: The CrateDigger application. Namespaced resources only.
+  sourceRepos:
+    - https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: cratedigger
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: frontrow-api
+  namespace: argocd
+spec:
+  description: The FrontRow API (Laravel backend). Namespaced resources only.
+  sourceRepos:
+    - https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: frontrow-api
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange

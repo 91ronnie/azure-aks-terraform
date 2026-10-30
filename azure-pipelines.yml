@@ -1,0 +1,254 @@
+# FrontRow infrastructure pipeline (Azure DevOps).
+#
+#   Validate  -> fmt, init (no backend), validate, terraform test, Checkov, Trivy config
+#   Plan      -> init against the remote state, plan, publish the plan for review
+#   Apply     -> ONLY when the run is started manually with runApply=true, on main,
+#                AND the "frontrow-infra-dev" environment approval is granted.
+#                It applies exactly the reviewed plan file.
+#
+# Nothing here runs `terraform destroy`. See docs/deployment-runbook.md.
+#
+# One-time setup (docs/prerequisites.md#azure-devops):
+#   - Service connection  sc-frontrow-infra-dev  (Azure Resource Manager,
+#     workload identity federation, scoped as described in docs/security.md)
+#   - Variable group      frontrow-infra-dev     (non-secret values below)
+#   - Environment         frontrow-infra-dev     with an Approvals check
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - environments/*
+      - modules/*
+      - azure-pipelines.yml
+    exclude:
+      # Image bumps from the web pipeline must not trigger infrastructure runs.
+      - gitops/*
+      - docs/*
+
+# Azure Repos ignores `pr:`; add this pipeline as a Build Validation branch
+# policy on main instead. (GitHub-hosted repos would use this block.)
+pr:
+  branches:
+    include: [main]
+  paths:
+    exclude: [gitops/*, docs/*]
+
+parameters:
+  - name: runApply
+    displayName: Apply the reviewed plan (requires environment approval)
+    type: boolean
+    default: false
+
+variables:
+  - group: frontrow-infra-dev
+  # Expected in the group (none are secrets):
+  #   ARM_SUBSCRIPTION_ID, TFSTATE_RESOURCE_GROUP, TFSTATE_STORAGE_ACCOUNT,
+  #   TFSTATE_CONTAINER, TFSTATE_KEY,
+  #   TF_VAR_unique_suffix, TF_VAR_owner, TF_VAR_operator_ip_ranges (HCL list, e.g. ["1.2.3.4/32"]),
+  #   TF_VAR_cluster_admin_object_ids, TF_VAR_pipeline_acr_push_principal_id
+  # And ONE secret (padlock in the variable group; mapped explicitly below,
+  # because Azure Pipelines never exposes secrets to scripts on its own):
+  #   MYSQL_ADMIN_PASSWORD  -> TF_VAR_mysql_admin_password (write-only in Azure,
+  #                            never stored in Terraform state; docs/frontrow-api.md)
+  - name: serviceConnection
+    value: sc-frontrow-infra-dev
+  - name: tfVersion
+    value: 1.15.7
+  - name: tfDir
+    value: environments/dev
+  - name: checkovImage
+    value: bridgecrew/checkov:3.4.0
+  - name: trivyImage
+    value: aquasec/trivy:0.76.0
+  - name: TF_IN_AUTOMATION
+    value: "true"
+  - name: TF_INPUT
+    value: "false"
+
+pool:
+  vmImage: ubuntu-24.04
+
+stages:
+  - stage: Validate
+    jobs:
+      - job: static
+        displayName: Format, validate, test, scan
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - template: pipeline-templates/install-terraform.yml
+            parameters:
+              version: $(tfVersion)
+
+          - script: terraform fmt -check -recursive -diff
+            displayName: terraform fmt
+
+          - script: |
+              set -euo pipefail
+              terraform init -backend=false
+              terraform validate
+              terraform test
+            displayName: init (no backend), validate, test (mocked provider)
+            workingDirectory: $(tfDir)
+
+          - script: |
+              set -euo pipefail
+              docker run --rm -v "$(Build.SourcesDirectory):/src" -w /src $(checkovImage) \
+                --config-file .checkov.yaml \
+                --output cli --output junitxml --output-file-path console,checkov-report
+            displayName: Checkov (IaC policy scan)
+
+          - script: |
+              set -euo pipefail
+              docker run --rm -v "$(Build.SourcesDirectory):/src" -w /src $(trivyImage) \
+                config --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml .
+            displayName: Trivy config (Terraform, Helm, Kubernetes YAML)
+
+          - script: |
+              set -euo pipefail
+              docker run --rm -v "$(Build.SourcesDirectory):/src" -w /src $(trivyImage) \
+                fs --scanners secret --exit-code 1 .
+            displayName: Trivy secret scan
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: checkov-report/results_junitxml.xml
+              testRunTitle: Checkov
+              failTaskOnMissingResultsFile: false
+
+  - stage: Plan
+    dependsOn: Validate
+    jobs:
+      - job: plan
+        displayName: terraform plan
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - template: pipeline-templates/install-terraform.yml
+            parameters:
+              version: $(tfVersion)
+
+          - task: AzureCLI@2
+            displayName: init + plan
+            env:
+              TF_VAR_mysql_admin_password: $(MYSQL_ADMIN_PASSWORD)
+            inputs:
+              azureSubscription: $(serviceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true   # exposes servicePrincipalId, tenantId, idToken
+              workingDirectory: $(tfDir)
+              inlineScript: |
+                set -euo pipefail
+                # Workload identity federation: no client secret exists.
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_OIDC_TOKEN="$idToken"
+                export ARM_USE_OIDC=true
+                export ARM_SUBSCRIPTION_ID="$(ARM_SUBSCRIPTION_ID)"
+
+                terraform init \
+                  -backend-config="resource_group_name=$(TFSTATE_RESOURCE_GROUP)" \
+                  -backend-config="storage_account_name=$(TFSTATE_STORAGE_ACCOUNT)" \
+                  -backend-config="container_name=$(TFSTATE_CONTAINER)" \
+                  -backend-config="key=$(TFSTATE_KEY)" \
+                  -backend-config="use_azuread_auth=true" \
+                  -backend-config="use_oidc=true"
+
+                set +e
+                terraform plan -lock-timeout=5m -out=tfplan -detailed-exitcode
+                rc=$?
+                set -e
+                if [ "$rc" -eq 1 ]; then exit 1; fi
+                echo "##vso[task.setvariable variable=hasChanges;isOutput=true]$([ "$rc" -eq 2 ] && echo true || echo false)"
+
+                terraform show -no-color tfplan > plan.txt
+                # Highlight destructive actions for the reviewer.
+                terraform show -json tfplan | jq -r '
+                  .resource_changes[]
+                  | select(.change.actions | index("delete"))
+                  | "DESTROY/REPLACE: \(.address)"' > destroys.txt || true
+                if [ -s destroys.txt ]; then
+                  echo "##vso[task.logissue type=warning]Plan destroys or replaces resources - review destroys.txt"
+                  cat destroys.txt
+                fi
+            name: tfplan
+
+          - script: |
+              set -euo pipefail
+              mkdir -p "$(Build.ArtifactStagingDirectory)/plan"
+              cp tfplan plan.txt destroys.txt .terraform.lock.hcl "$(Build.ArtifactStagingDirectory)/plan/"
+            displayName: Stage plan files
+            workingDirectory: $(tfDir)
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish plan for review
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/plan
+              artifact: tfplan-dev
+            # Only the plan, its text rendering, the destroy list and the lock
+            # file are published (not .terraform/). The configuration has no
+            # secrets by design; artifact access is still limited to project members.
+
+  - stage: Apply
+    dependsOn: Plan
+    condition: >-
+      and(succeeded(),
+          eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+          eq('${{ parameters.runApply }}', 'true'),
+          eq(dependencies.Plan.outputs['plan.tfplan.hasChanges'], 'true'))
+    jobs:
+      - deployment: apply
+        displayName: terraform apply (approved plan)
+        environment: frontrow-infra-dev   # add an Approvals check on this environment
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+
+                - download: current
+                  artifact: tfplan-dev
+
+                - template: pipeline-templates/install-terraform.yml
+                  parameters:
+                    version: $(tfVersion)
+
+                - task: AzureCLI@2
+                  displayName: terraform apply tfplan
+                  env:
+                    TF_VAR_mysql_admin_password: $(MYSQL_ADMIN_PASSWORD)
+                  inputs:
+                    azureSubscription: $(serviceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    workingDirectory: $(tfDir)
+                    inlineScript: |
+                      set -euo pipefail
+                      export ARM_CLIENT_ID="$servicePrincipalId"
+                      export ARM_TENANT_ID="$tenantId"
+                      export ARM_OIDC_TOKEN="$idToken"
+                      export ARM_USE_OIDC=true
+                      export ARM_SUBSCRIPTION_ID="$(ARM_SUBSCRIPTION_ID)"
+
+                      cp "$(Pipeline.Workspace)/tfplan-dev/tfplan" .
+                      cp "$(Pipeline.Workspace)/tfplan-dev/.terraform.lock.hcl" .
+
+                      terraform init \
+                        -backend-config="resource_group_name=$(TFSTATE_RESOURCE_GROUP)" \
+                        -backend-config="storage_account_name=$(TFSTATE_STORAGE_ACCOUNT)" \
+                        -backend-config="container_name=$(TFSTATE_CONTAINER)" \
+                        -backend-config="key=$(TFSTATE_KEY)" \
+                        -backend-config="use_azuread_auth=true" \
+                        -backend-config="use_oidc=true"
+
+                      # Terraform refuses a stale plan if state changed since it was made.
+                      terraform apply -lock-timeout=5m tfplan

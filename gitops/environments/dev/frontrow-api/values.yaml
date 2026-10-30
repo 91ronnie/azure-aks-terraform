@@ -1,0 +1,39 @@
+# FrontRow API - dev environment values.
+#
+# The image blocks are updated by the backend pipeline (stage "GitOps").
+# Fill the REPLACE_ME values from: terraform -chdir=environments/dev output -json api
+image:
+  repository: "" # <acr>.azurecr.io/frontrow/api
+  tag: "" # git-<12-char commit sha>
+  digest: "" # sha256:...
+webImage:
+  repository: "" # <acr>.azurecr.io/frontrow/api-web
+  digest: "" # sha256:...
+ingress:
+  host: azure-api.frontrow.co.ke
+  tls:
+    # Switch to letsencrypt-prod after the staging certificate is issued.
+    clusterIssuer: letsencrypt-staging
+frontendUrl: https://azure-fr.frontrow.co.ke
+serviceAccount:
+  workloadIdentityClientId: REPLACE_ME_API_CLIENT_ID # .workload_identity_client_id
+keyVault:
+  name: REPLACE_ME_API_KEY_VAULT # .key_vault_name
+  tenantId: REPLACE_ME_TENANT_ID # terraform output -raw tenant_id
+  # Add the integrations you use (and create the secrets first), e.g.:
+  # extraSecrets:
+  #   AUTH0_DOMAIN: auth0-domain
+  #   SENTRY_LARAVEL_DSN: sentry-dsn
+mysql:
+  host: REPLACE_ME_MYSQL_FQDN # .mysql_fqdn
+redis:
+  host: REPLACE_ME_REDIS_HOSTNAME # .redis_hostname
+storage:
+  accountName: REPLACE_ME_STORAGE_ACCOUNT # .storage_account_name
+mail:
+  fromAddress: noreply@frontrow.co.ke # .email_from_address
+# Non-secret settings carried over from backend/cicd/config/demo-infra.json
+# (see backend/cicd/config/README.md for the full mapping).
+config:
+  SCOUT_PREFIX: dev_
+  FEATURE_FLAGS_ENVIRONMENT: dev

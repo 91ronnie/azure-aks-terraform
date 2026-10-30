@@ -1,0 +1,43 @@
+# Terraform working directories and state
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Plans can contain sensitive values; never commit them
+*.tfplan
+tfplan
+tfplan.*
+*.plan.json
+
+# Environment-specific inputs (examples are committed as *.example)
+*.tfvars
+*.tfvars.json
+backend.hcl
+!*.example
+
+# Local overrides
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration / credentials
+.terraformrc
+terraform.rc
+*.pem
+*.key
+*.pfx
+kubeconfig*
+
+# Scanner output
+checkov-report*
+trivy-report*
+results.sarif
+
+# Provider lock files ARE committed (reproducible provider versions).
+
+.DS_Store
+.idea/
+.vscode/

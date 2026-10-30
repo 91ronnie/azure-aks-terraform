@@ -1,0 +1,44 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. Nothing in this file is a
+# secret, but it does identify your environment, so it is not committed.
+
+# subscription_id = "00000000-0000-0000-0000-000000000000" # or export ARM_SUBSCRIPTION_ID
+
+unique_suffix = "abc01"  # 3-6 lowercase chars; makes ACR/Key Vault names globally unique
+owner         = "your-name"
+
+# Your public egress IP(s): curl -s https://api.ipify.org
+operator_ip_ranges = ["203.0.113.10/32"]
+
+# Your Entra ID object ID: az ad signed-in-user show --query id -o tsv
+cluster_admin_object_ids = ["00000000-0000-0000-0000-000000000000"]
+
+# Object ID of the Azure DevOps service connection identity used for image pushes.
+# pipeline_acr_push_principal_id = "00000000-0000-0000-0000-000000000000"
+
+# location     = "northeurope"
+# node_vm_size = "Standard_D2as_v5"
+# app_fqdn     = "azure-fr.frontrow.co.ke"
+
+# Monitoring / cost guard rails
+# alert_email           = "you@example.com"
+# monthly_budget_amount = 120
+# budget_start_date     = "2026-11-01T00:00:00Z"
+
+# CrateDigger (second app with PostgreSQL) - see docs/cratedigger.md
+# cratedigger_enabled  = true
+# cratedigger_fqdn     = "azure-cd.frontrow.co.ke"
+# postgres_subnet_cidr = "10.40.12.0/28"
+# postgres_operator_admins = {
+#   me = { object_id = "00000000-0000-0000-0000-000000000000", principal_name = "you@yourtenant.onmicrosoft.com", principal_type = "User" }
+# }
+
+# FrontRow API (Laravel backend: MySQL, Redis, Blob, email) - see docs/frontrow-api.md
+# api_enabled               = true
+# api_fqdn                  = "azure-api.frontrow.co.ke"
+# mysql_subnet_cidr         = "10.40.13.0/28"
+# private_endpoints_subnet_cidr = "10.40.8.0/24"
+# api_email_domain          = "frontrow.co.ke"
+# api_email_domain_verified = false # true once the DNS records are verified
+# The MySQL admin password is NOT set here (write-only, ephemeral). Export it
+# for every plan/apply; the pipeline reads it from its secret variable:
+#   export TF_VAR_mysql_admin_password='<the value stored in Key Vault as mysql-admin-password>'

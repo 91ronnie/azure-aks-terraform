@@ -1,0 +1,168 @@
+# Defaults for the FrontRow API chart. Environment values live in
+# gitops/environments/<env>/frontrow-api/values.yaml.
+
+# Both images are built from backend/Dockerfile by the backend pipeline and
+# share one tag (git-<sha12>); each has its own digest.
+image:
+  repository: ""   # <acr>/frontrow/api       (target "app": php-fpm)
+  tag: ""          # git-<sha12>, never "latest"
+  digest: ""       # sha256:... - written by the pipeline
+  pullPolicy: IfNotPresent
+webImage:
+  repository: ""   # <acr>/frontrow/api-web   (target "web": nginx)
+  digest: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  name: frontrow-api
+  # terraform output -json api | jq -r .workload_identity_client_id
+  workloadIdentityClientId: ""
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ""
+  tls:
+    clusterIssuer: letsencrypt-staging
+    secretName: frontrow-api-tls
+  annotations: {}
+
+# URL of the FrontRow web app (links in e-mails, SSO redirects).
+frontendUrl: ""
+
+# Connection settings from `terraform output -json api` (no secrets here).
+mysql:
+  host: ""          # .mysql_fqdn
+  database: frontrow
+  mqttDatabase: frontrow_mqtt
+redis:
+  host: ""          # .redis_hostname
+  port: 10000
+storage:
+  accountName: ""   # .storage_account_name
+mail:
+  fromAddress: ""   # .email_from_address
+  fromName: FrontRow
+
+# Non-secret runtime configuration (environment variables). Values here
+# override the chart's defaults in templates/configmap.yaml; add third-party
+# endpoints (DR_FIRST_*_URL, POINT_CLICK_CARE_BASE_URL, ...) here.
+config: {}
+
+# Secrets: read from Azure Key Vault by the Secrets Store CSI driver with the
+# pod's workload identity, synced into a Kubernetes Secret and exposed as
+# environment variables. Map: environment variable -> Key Vault secret name.
+# EVERY listed secret must exist in Key Vault, or pods stay in
+# ContainerCreating (docs/frontrow-api.md#key-vault-secrets).
+keyVault:
+  name: ""       # terraform output -json api | jq -r .key_vault_name
+  tenantId: ""
+  secrets:
+    APP_KEY: app-key  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    DB_USERNAME: db-username  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    DB_PASSWORD: db-password  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    DB2_USERNAME: db-username  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    DB2_PASSWORD: db-password  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    REDIS_PASSWORD: redis-access-key  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    AZURE_STORAGE_ACCOUNT_KEY: storage-account-key  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    MAIL_USERNAME: smtp-username  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    MAIL_PASSWORD: smtp-password  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    PASSPORT_PRIVATE_KEY: passport-private-key  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+    PASSPORT_PUBLIC_KEY: passport-public-key  # checkov:skip=CKV_SECRET_6:Key Vault secret name, not a value
+  # Integration credentials you actually use (AUTH0_*, SENTRY_LARAVEL_DSN,
+  # DR_FIRST_*, PUSHER_*, ...). Same format; merged with `secrets`.
+  extraSecrets: {}
+
+# --- API (nginx + php-fpm in one pod) ----------------------------------------
+api:
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  webResources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# --- Queue workers (were supervisor programs on EC2) -------------------------
+# One Deployment per entry. The EC2 "consultant-navigation" listener is a
+# no-op command and "broadcast_events" had no producer; neither is deployed.
+workers:
+  default:
+    replicas: 2
+    command: ["php", "artisan", "queue:work", "redis", "--queue=default", "--sleep=3", "--tries=3", "--max-time=3600"]
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 768Mi
+
+# --- Scheduler (was `* * * * * php artisan schedule:run` cron) ---------------
+scheduler:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+# --- Migrations: Argo CD Sync hook, before the Deployments roll -------------
+migrations:
+  enabled: true
+  command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
+  backoffLimit: 1
+  activeDeadlineSeconds: 900
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 768Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 33
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop: ["ALL"]
+
+# Container users: www-data in the php image, nginx in nginx-unprivileged.
+phpUser: 33
+nginxUser: 101
+
+networkPolicy:
+  enabled: true
+  ingressNamespace: traefik
+  mysqlCidr: 10.40.13.0/28
+  privateEndpointsCidr: 10.40.8.0/24
+  # Extra egress ports to the Internet besides 443: SMTP submission (Azure
+  # Communication Services) and SFTP (Kareo/Tebra/Beacon integrations).
+  extraEgressPorts: [587, 22]
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

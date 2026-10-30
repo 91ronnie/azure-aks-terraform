@@ -1,0 +1,30 @@
+{{- if .Values.networkPolicy.enabled }}
+# Enforced by Cilium (AKS network_policy = "cilium").
+# Ingress: only the ingress controller namespace may reach the web port.
+# Egress: none. nginx serves static files and makes no outbound calls; the
+# browser talks to the external APIs directly. (The Key Vault CSI driver runs
+# on the node, not in this pod, so it is unaffected.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "frontrow.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "frontrow.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "frontrow.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace }}
+      ports:
+        - port: http
+          protocol: TCP
+  egress: []
+{{- end }}

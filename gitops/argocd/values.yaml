@@ -1,0 +1,88 @@
+# Argo CD Helm values (chart argo-cd 10.11.6 / Argo CD v3.5.6).
+# Installed by gitops/argocd/install-argocd.sh, not by Terraform.
+#
+# Lab profile: single replicas, no Dex/SSO, no notifications, no public
+# ingress. The UI/API is reached with `kubectl port-forward` only.
+
+global:
+  domain: argocd.local   # not exposed; used for generated links only
+  podLabels: {}
+
+crds:
+  install: true
+  keep: true
+
+configs:
+  params:
+    # TLS is terminated by argocd-server itself (self-signed); access is via port-forward.
+    server.insecure: false
+    # Reconcile every 3 minutes (default); Git polling, no webhooks needed.
+    timeout.reconciliation: 180s
+  cm:
+    admin.enabled: "true"            # disable after you configure SSO (see docs/argocd-gitops.md)
+    exec.enabled: "false"
+    users.anonymous.enabled: "false"
+    statusbadge.enabled: "false"
+    # Hide noisy fields from diffs.
+    resource.exclusions: |
+      - apiGroups: ["cilium.io"]
+        kinds: ["CiliumIdentity", "CiliumEndpoint", "CiliumEndpointSlice"]
+        clusters: ["*"]
+  rbac:
+    policy.default: role:readonly
+  # Repository credentials are created out-of-band; see repository.example.yaml.
+  repositories: {}
+  credentialTemplates: {}
+
+controller:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 768Mi }
+  serviceAccount:
+    annotations: {}
+    # azure.workload.identity/client-id: <terraform output argocd_identity_client_id>
+  podLabels: {}
+    # azure.workload.identity/use: "true"
+
+repoServer:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  serviceAccount:
+    create: true
+    annotations: {}
+    # azure.workload.identity/client-id: <terraform output argocd_identity_client_id>
+  podLabels: {}
+    # azure.workload.identity/use: "true"
+
+server:
+  replicas: 1
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  serviceAccount:
+    annotations: {}
+  podLabels: {}
+
+redis:
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { memory: 128Mi }
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+applicationSet:
+  enabled: false
+
+commitServer:
+  enabled: false

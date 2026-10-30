@@ -1,0 +1,11 @@
+FrontRow {{ .Values.image.tag }} deployed to namespace {{ .Release.Namespace }}.
+
+Image: {{ include "frontrow.image" . }}
+{{- if .Values.ingress.enabled }}
+URL:   https://{{ .Values.ingress.host }}  (issuer: {{ .Values.ingress.tls.clusterIssuer }})
+{{- end }}
+
+Check:
+  kubectl -n {{ .Release.Namespace }} get deploy,pods,svc,ingress,certificate
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "frontrow.fullname" . }} 8080:{{ .Values.service.port }}
+  curl -s http://localhost:8080/build-info.json

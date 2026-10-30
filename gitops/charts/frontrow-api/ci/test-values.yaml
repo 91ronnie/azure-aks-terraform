@@ -1,0 +1,24 @@
+# Values used by `helm lint` / `helm template` in CI and local validation only.
+image:
+  repository: acrfrontrowdevexample.azurecr.io/frontrow/api
+  tag: git-0123456789ab
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+webImage:
+  repository: acrfrontrowdevexample.azurecr.io/frontrow/api-web
+  digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+ingress:
+  host: api.example.test
+frontendUrl: https://web.example.test
+serviceAccount:
+  workloadIdentityClientId: 00000000-0000-0000-0000-000000000000
+keyVault:
+  name: kv-api-dev-example
+  tenantId: 00000000-0000-0000-0000-000000000000
+mysql:
+  host: mysql-frontrow-dev-example.mysql.database.azure.com
+redis:
+  host: redis-frontrow-dev-example.northeurope.redis.azure.net
+storage:
+  accountName: stfrontrowapidevexample
+mail:
+  fromAddress: noreply@example.test

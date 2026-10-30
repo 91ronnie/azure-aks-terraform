@@ -1,0 +1,83 @@
+# Ingress controller: Traefik Proxy (chart 42.1.3 / Traefik v3.7.16).
+# Why Traefik: actively maintained, supports Ingress and Gateway API, single
+# Deployment, no paid components. ingress-nginx is retired upstream; Azure
+# Application Gateway for Containers costs a fixed hourly fee. See ADR-006.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://traefik.github.io/charts
+    chart: traefik
+    targetRevision: 42.1.3
+    helm:
+      valuesObject:
+        deployment:
+          replicas: 1
+        resources:
+          requests: { cpu: 50m, memory: 64Mi }
+          limits: { memory: 256Mi }
+        ingressClass:
+          enabled: true
+          isDefaultClass: true
+          name: traefik
+        providers:
+          kubernetesCRD:
+            enabled: true
+          kubernetesIngress:
+            enabled: true
+            publishedService:
+              enabled: true
+        ports:
+          web:
+            http:
+              redirections:
+                entryPoint:
+                  to: websecure
+                  scheme: https
+                  permanent: true
+          websecure:
+            http:
+              tls:
+                enabled: true
+        api:
+          dashboard: false
+        ingressRoute:
+          dashboard:
+            enabled: false
+        logs:
+          general:
+            level: INFO
+          access:
+            enabled: true
+        service:
+          type: LoadBalancer
+          annotations:
+            # Use the Terraform-owned static IP (terraform output ingress_public_ip_name)
+            # from the main resource group instead of an AKS-managed one.
+            service.beta.kubernetes.io/azure-pip-name: pip-frontrow-dev-ingress
+            service.beta.kubernetes.io/azure-load-balancer-resource-group: rg-frontrow-dev
+            service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: tcp
+          spec:
+            externalTrafficPolicy: Cluster
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

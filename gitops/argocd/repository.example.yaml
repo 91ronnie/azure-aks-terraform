@@ -1,0 +1,32 @@
+# Argo CD repository credential for the GitOps repo (this repository).
+# NEVER commit a filled-in copy. Create it directly in the cluster:
+#
+# Option A (preferred): Azure workload identity - no secret material at all.
+#   1. Add the Argo CD managed identity (terraform output argocd_identity_client_id)
+#      to your Azure DevOps organisation as a user (Stakeholder/Basic access) and
+#      give it Reader on this repository only.
+#   2. Install Argo CD with ARGOCD_WI_CLIENT_ID set (install-argocd.sh).
+#   3. kubectl apply -f - with the manifest below (useAzureWorkloadIdentity: "true").
+#   Requires an Argo CD version with Azure DevOps workload-identity support; check
+#   the "Private Repositories" page of the Argo CD docs for your version.
+#
+# Option B (fallback): a read-only PAT.
+#   Scope: Code (Read) only, single organisation, shortest practical expiry.
+#   kubectl -n argocd create secret generic frontrow-gitops-repo \
+#     --from-literal=type=git \
+#     --from-literal=url="https://dev.azure.com/<org>/<project>/_git/<repo>" \
+#     --from-literal=username=argocd \
+#     --from-literal=password="$(read -rsp 'PAT: ' p; echo "$p")"
+#   kubectl -n argocd label secret frontrow-gitops-repo argocd.argoproj.io/secret-type=repository
+#   Rotate before expiry: re-run the create with --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: frontrow-gitops-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+  useAzureWorkloadIdentity: "true"

@@ -1,0 +1,20 @@
+# CrateDigger - dev environment values.
+#
+# The image block is updated by the crate-digger pipeline (stage "GitOps").
+# Fill the REPLACE_ME values from: terraform -chdir=environments/dev output -json cratedigger
+image:
+  repository: "" # <acr>.azurecr.io/cratedigger/app
+  tag: "" # git-<12-char commit sha>
+  digest: "" # sha256:...
+ingress:
+  host: azure-cd.frontrow.co.ke
+  tls:
+    # Switch to letsencrypt-prod after the staging certificate is issued.
+    clusterIssuer: letsencrypt-staging
+serviceAccount:
+  workloadIdentityClientId: REPLACE_ME_CRATEDIGGER_CLIENT_ID # .workload_identity_client_id
+keyVault:
+  name: REPLACE_ME_CRATEDIGGER_KEY_VAULT # .key_vault_name
+  tenantId: REPLACE_ME_TENANT_ID # terraform output -raw tenant_id
+database:
+  url: REPLACE_ME_DATABASE_URL # .database_url (no password inside)

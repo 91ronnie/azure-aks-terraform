@@ -1,0 +1,12 @@
+apiVersion: v2
+name: frontrow
+description: FrontRow web application (static React SPA served by unprivileged nginx)
+type: application
+version: 0.1.0
+# appVersion is informational; the deployed image is set by image.tag/image.digest.
+appVersion: "2.1.6"
+kubeVersion: ">=1.30.0-0"
+keywords:
+  - frontrow
+  - react
+  - nginx

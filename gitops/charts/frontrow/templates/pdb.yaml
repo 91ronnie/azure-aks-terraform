@@ -1,0 +1,14 @@
+{{- if and .Values.podDisruptionBudget.enabled (ge (int (include "frontrow.minReplicas" .)) 2) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "frontrow.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "frontrow.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "frontrow.selectorLabels" . | nindent 6 }}
+{{- end }}

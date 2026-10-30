@@ -1,0 +1,45 @@
+# FrontRow API (Laravel backend). Chart: gitops/charts/frontrow-api; values:
+# gitops/environments/dev/frontrow-api/values.yaml (image block written by the
+# backend pipeline).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: frontrow-api-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: frontrow-api
+  source:
+    repoURL: https://dev.azure.com/REPLACE_ME_ORG/REPLACE_ME_PROJECT/_git/REPLACE_ME_REPO
+    targetRevision: main
+    path: gitops/charts/frontrow-api
+    helm:
+      releaseName: frontrow-api
+      valueFiles:
+        - ../../environments/dev/frontrow-api/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: frontrow-api
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      # A failed migration job fails the sync; retry a few times (e.g. while
+      # Key Vault secrets are still being added) before giving up.
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+  revisionHistoryLimit: 10

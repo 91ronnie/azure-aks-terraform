@@ -1,0 +1,53 @@
+{{- $host := required "ingress.host is required" .Values.ingress.host -}}
+{{- $frontend := required "frontendUrl is required (the FrontRow web app URL)" .Values.frontendUrl -}}
+{{- $defaults := dict
+  "APP_NAME" "FrontRow"
+  "APP_ENV" "production"
+  "APP_DEBUG" "false"
+  "APP_URL" (printf "https://%s" $host)
+  "LOG_CHANNEL" "stderr"
+  "LOG_LEVEL" "info"
+  "DB_CONNECTION" "mysql"
+  "DB_HOST" (required "mysql.host is required (terraform output api.mysql_fqdn)" .Values.mysql.host)
+  "DB_PORT" "3306"
+  "DB_DATABASE" .Values.mysql.database
+  "DB2_CONNECTION" "mysql"
+  "DB2_HOST" .Values.mysql.host
+  "DB2_PORT" "3306"
+  "DB2_DATABASE" .Values.mysql.mqttDatabase
+  "MYSQL_ATTR_SSL_CA" "/etc/ssl/certs/ca-certificates.crt"
+  "REDIS_CLIENT" "phpredis"
+  "REDIS_SCHEME" "tls"
+  "REDIS_HOST" (required "redis.host is required (terraform output api.redis_hostname)" .Values.redis.host)
+  "REDIS_PORT" (toString .Values.redis.port)
+  "CACHE_DRIVER" "redis"
+  "QUEUE_CONNECTION" "redis"
+  "SESSION_DRIVER" "redis"
+  "BROADCAST_DRIVER" "log"
+  "CLOUD_STORAGE_DRIVER" "azure"
+  "FILESYSTEM_CLOUD" "s3"
+  "AZURE_STORAGE_ACCOUNT_NAME" (required "storage.accountName is required (terraform output api.storage_account_name)" .Values.storage.accountName)
+  "MAIL_MAILER" "smtp"
+  "MAIL_HOST" "smtp.azurecomm.net"
+  "MAIL_PORT" "587"
+  "MAIL_ENCRYPTION" "tls"
+  "MAIL_FROM_ADDRESS" (required "mail.fromAddress is required (terraform output api.email_from_address)" .Values.mail.fromAddress)
+  "MAIL_FROM_NAME" .Values.mail.fromName
+  "SCOUT_DRIVER" "null"
+  "OTEL_ENABLED" "false"
+  "WOUND_PROS_WEB_LINK" $frontend
+  "WOUND_PROS_WEB_LINK_SSO" (printf "%s/#/sso" $frontend)
+-}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "frontrow-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "frontrow-api.labels" (dict "root" . "component" "config") | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  {{- range $key, $value := merge (dict) .Values.config $defaults }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}

@@ -1,0 +1,5 @@
+FrontRow API {{ .Values.image.tag }} -> https://{{ .Values.ingress.host }}
+
+  kubectl -n {{ .Release.Namespace }} get pods,job
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "frontrow-api.fullname" . }}-migrate
+  curl -fsS https://{{ .Values.ingress.host }}/health/ready

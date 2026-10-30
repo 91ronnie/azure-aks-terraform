@@ -1,0 +1,48 @@
+# cert-manager v1.21.3: issues and renews the origin TLS certificate for
+# azure-fr.frontrow.co.ke from Let's Encrypt (HTTP-01 through Traefik).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.21.3
+    helm:
+      valuesObject:
+        crds:
+          enabled: true
+          keep: true
+        resources:
+          requests: { cpu: 10m, memory: 64Mi }
+          limits: { memory: 192Mi }
+        webhook:
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 96Mi }
+        cainjector:
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits: { memory: 192Mi }
+        prometheus:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

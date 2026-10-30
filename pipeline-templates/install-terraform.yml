@@ -1,0 +1,18 @@
+# Installs a pinned Terraform version and verifies its SHA256 checksum.
+parameters:
+  - name: version
+    type: string
+
+steps:
+  - script: |
+      set -euo pipefail
+      v="${{ parameters.version }}"
+      cd "$(Agent.TempDirectory)"
+      curl -fsSLO "https://releases.hashicorp.com/terraform/${v}/terraform_${v}_linux_amd64.zip"
+      curl -fsSLO "https://releases.hashicorp.com/terraform/${v}/terraform_${v}_SHA256SUMS"
+      grep "terraform_${v}_linux_amd64.zip" "terraform_${v}_SHA256SUMS" | sha256sum -c -
+      unzip -o -q "terraform_${v}_linux_amd64.zip" -d "$(Agent.TempDirectory)/tf"
+      echo "##vso[task.prependpath]$(Agent.TempDirectory)/tf"
+    displayName: Install Terraform ${{ parameters.version }}
+  - script: terraform version
+    displayName: terraform version

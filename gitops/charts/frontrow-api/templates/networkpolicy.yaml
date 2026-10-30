@@ -1,0 +1,85 @@
+{{- if .Values.networkPolicy.enabled }}
+# Enforced by Cilium. Applies to every pod of the release (API, workers,
+# scheduler, migration job).
+# Ingress: only the API pods, only from the ingress controller namespace.
+# Egress:  DNS, MySQL (delegated subnet, 3306), Managed Redis (private
+#          endpoint, 10000), and the Internet on 443 (Entra ID, Key Vault,
+#          Blob storage, third-party APIs) plus extraEgressPorts.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "frontrow-api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "frontrow-api.labels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "frontrow-api.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.mysqlCidr }}
+      ports:
+        - port: 3306
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.privateEndpointsCidr }}
+      ports:
+        - port: 10000
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16   # includes the instance metadata endpoint
+      ports:
+        - port: 443
+          protocol: TCP
+        {{- range .Values.networkPolicy.extraEgressPorts }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "frontrow-api.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "frontrow-api.labels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "frontrow-api.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace }}
+      ports:
+        - port: http
+          protocol: TCP
+{{- end }}

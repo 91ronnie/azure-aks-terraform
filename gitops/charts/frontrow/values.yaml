@@ -1,0 +1,115 @@
+# Defaults for the FrontRow chart. Environment-specific values live in
+# gitops/environments/<env>/frontrow/values.yaml.
+
+replicaCount: 2
+
+image:
+  # <acr login server>/frontrow/web - written by the web pipeline.
+  repository: ""
+  # Immutable tag (git-<sha>), never "latest". Written by the web pipeline.
+  tag: ""
+  # sha256 digest of the exact image the pipeline built and scanned. When set,
+  # the pod references repository:tag@digest, so a re-pushed tag cannot change
+  # what runs.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: frontrow
+  # Client ID of the FrontRow managed identity (terraform output
+  # workload_identity_client_id). Only needed when keyVault.enabled.
+  workloadIdentityClientId: ""
+
+podAnnotations: {}
+podLabels: {}
+
+containerPort: 8080
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: traefik
+  # Set per environment (gitops/environments/<env>/frontrow/values.yaml).
+  host: ""
+  tls:
+    enabled: true
+    # cert-manager ClusterIssuer: letsencrypt-staging first, then letsencrypt-prod.
+    clusterIssuer: letsencrypt-staging
+    secretName: frontrow-tls
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+probes:
+  path: /healthz
+  readiness:
+    initialDelaySeconds: 2
+    periodSeconds: 10
+    failureThreshold: 3
+  liveness:
+    initialDelaySeconds: 5
+    periodSeconds: 20
+    failureThreshold: 3
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+  fsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop: ["ALL"]
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  # Only rendered when at least 2 replicas are guaranteed, otherwise a PDB
+  # would block node drains during upgrades.
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  # Namespace of the ingress controller allowed to reach the pods.
+  ingressNamespace: traefik
+
+topologySpread:
+  enabled: true
+
+# Optional Azure Key Vault integration (Secrets Store CSI driver + workload
+# identity). FrontRow is a static SPA and needs no runtime secrets, so this is
+# off by default; enable it for the Key Vault exercise in docs.
+keyVault:
+  enabled: false
+  name: ""
+  tenantId: ""
+  mountPath: /mnt/secrets
+  # Key Vault secret names to mount as files.
+  objects: []
+  #  - name: frontrow-demo-secret
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

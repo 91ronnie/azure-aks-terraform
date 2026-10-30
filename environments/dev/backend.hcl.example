@@ -1,0 +1,12 @@
+# Copy to backend.hcl (git-ignored) after running bootstrap/bootstrap-state.sh.
+# terraform init -backend-config=backend.hcl
+#
+# No access keys or SAS tokens: use_azuread_auth makes Terraform authenticate to
+# Blob storage with your Entra ID identity (needs "Storage Blob Data Contributor"
+# on the container or account). Locking uses native blob leases.
+
+resource_group_name  = "rg-frontrow-tfstate"
+storage_account_name = "stfrontrowtfstateabc01"
+container_name       = "tfstate"
+key                  = "frontrow/dev/terraform.tfstate"
+use_azuread_auth     = true
